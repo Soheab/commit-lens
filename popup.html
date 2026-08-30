@@ -1,0 +1,425 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>GitHub Commit Details</title>
+<style>
+  :root {
+    --bg-1: #eef1f6;
+    --bg-2: #dfe6f3;
+    --card: rgba(255, 255, 255, 0.55);
+    --card-border: rgba(255, 255, 255, 0.6);
+    --text: #1b1f24;
+    --muted: #59636e;
+    --accent: #6e5bff;
+    --accent-2: #00b8d9;
+    --pill-off: rgba(27, 31, 36, 0.14);
+    --shadow: 0 8px 24px rgba(31, 41, 55, 0.12);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-1: #14161f;
+      --bg-2: #1f2233;
+      --card: rgba(255, 255, 255, 0.06);
+      --card-border: rgba(255, 255, 255, 0.1);
+      --text: #eef1f6;
+      --muted: #9aa4b2;
+      --pill-off: rgba(255, 255, 255, 0.14);
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    width: 310px;
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 13px;
+    color: var(--text);
+    background: radial-gradient(120% 140% at 0% 0%, var(--bg-2), var(--bg-1));
+    padding: 14px;
+  }
+
+  .app-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 0 2px;
+  }
+  .app-header .logo {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    color: #fff;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    box-shadow: 0 4px 14px rgba(110, 91, 255, 0.4);
+  }
+  .app-header .titles h1 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .app-header .titles p {
+    margin: 0;
+    font-size: 10.5px;
+    color: var(--muted);
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 12px 13px;
+    margin-bottom: 10px;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: var(--shadow);
+  }
+
+  .card h2 {
+    margin: 0 0 8px;
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 5px 2px;
+    border-radius: 10px;
+  }
+  .toggle-row label.txt {
+    cursor: pointer;
+    font-size: 12.5px;
+  }
+
+  .switch {
+    position: relative;
+    width: 34px;
+    height: 20px;
+    flex: none;
+  }
+  .switch input {
+    position: absolute;
+    opacity: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    cursor: pointer;
+    z-index: 1;
+  }
+  .switch .track {
+    position: absolute;
+    inset: 0;
+    background: var(--pill-off);
+    border-radius: 999px;
+    transition: background 0.18s ease;
+  }
+  .switch .thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    transition: transform 0.18s ease;
+  }
+  .switch input:checked ~ .track {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  }
+  .switch input:checked ~ .thumb {
+    transform: translateX(14px);
+  }
+
+  button {
+    width: 100%;
+    padding: 9px 12px;
+    font-size: 12.5px;
+    font-weight: 700;
+    border-radius: 12px;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.12s ease, filter 0.12s ease;
+  }
+  button:active { transform: scale(0.98); }
+  button:hover { filter: brightness(1.06); }
+
+  button.primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #fff;
+    box-shadow: 0 6px 16px rgba(110, 91, 255, 0.35);
+  }
+  button.primary:disabled {
+    background: var(--pill-off);
+    color: var(--muted);
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+  button.secondary {
+    background: rgba(127, 127, 127, 0.14);
+    color: var(--text);
+    margin-top: 6px;
+  }
+
+  #authStatus {
+    font-size: 12px;
+    line-height: 1.5;
+    margin-top: 8px;
+  }
+  #authStatus.pending { color: #b8860b; }
+  #authStatus.success { color: #1a9e5c; }
+  #authStatus.error { color: #e5484d; }
+
+  .user-code {
+    font-family: ui-monospace, monospace;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    background: rgba(127, 127, 127, 0.12);
+    border: 1px dashed var(--card-border);
+    border-radius: 10px;
+    padding: 6px 8px;
+    text-align: center;
+    margin: 8px 0;
+    cursor: pointer;
+  }
+
+  a { color: var(--accent); }
+
+  .hint {
+    color: var(--muted);
+    font-size: 10.5px;
+    line-height: 1.5;
+  }
+
+  .status-toast {
+    font-size: 10.5px;
+    color: #1a9e5c;
+    height: 12px;
+    margin-top: 2px;
+    text-align: center;
+  }
+
+  input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 9px;
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    background: rgba(127, 127, 127, 0.08);
+    color: var(--text);
+    margin-top: 6px;
+  }
+  input[type="text"]:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 9px;
+    font-family: ui-monospace, monospace;
+    font-size: 11.5px;
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    background: rgba(127, 127, 127, 0.08);
+    color: var(--text);
+    margin-top: 6px;
+    resize: vertical;
+  }
+  textarea:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  details summary {
+    cursor: pointer;
+    font-size: 11.5px;
+    color: var(--muted);
+    list-style: none;
+  }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::before {
+    content: "▸ ";
+  }
+  details[open] summary::before {
+    content: "▾ ";
+  }
+
+  .style-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 6px;
+    font-size: 10.5px;
+  }
+  .style-table td {
+    padding: 3px 4px;
+    border-bottom: 1px solid var(--card-border);
+    vertical-align: top;
+  }
+  .style-table td:first-child {
+    font-family: ui-monospace, monospace;
+    white-space: nowrap;
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .style-table td:last-child {
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+  <div class="app-header">
+    <div class="logo">GC</div>
+    <div class="titles">
+      <h1>Commit Details</h1>
+      <p>Richer commit rows for GitHub</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Commit stats</h2>
+    <div class="toggle-row">
+      <label class="txt" for="showFilesChanged">Files changed</label>
+      <span class="switch"><input type="checkbox" id="showFilesChanged" /><span class="track"></span><span class="thumb"></span></span>
+    </div>
+    <div class="toggle-row">
+      <label class="txt" for="showAdditions">Additions (+)</label>
+      <span class="switch"><input type="checkbox" id="showAdditions" /><span class="track"></span><span class="thumb"></span></span>
+    </div>
+    <div class="toggle-row">
+      <label class="txt" for="showDeletions">Deletions (-)</label>
+      <span class="switch"><input type="checkbox" id="showDeletions" /><span class="track"></span><span class="thumb"></span></span>
+    </div>
+    <div class="toggle-row">
+      <label class="txt" for="showDiffBar">Diff bar</label>
+      <span class="switch"><input type="checkbox" id="showDiffBar" /><span class="track"></span><span class="thumb"></span></span>
+    </div>
+    <div class="toggle-row">
+      <label class="txt" for="showVerified">Verified badge</label>
+      <span class="switch"><input type="checkbox" id="showVerified" /><span class="track"></span><span class="thumb"></span></span>
+    </div>
+    <div class="toggle-row">
+      <label class="txt" for="showMergeIndicator">Merge indicator</label>
+      <span class="switch"><input type="checkbox" id="showMergeIndicator" /><span class="track"></span><span class="thumb"></span></span>
+    </div>
+    <div class="toggle-row">
+      <label class="txt" for="showCommentCount">Comment count</label>
+      <span class="switch"><input type="checkbox" id="showCommentCount" /><span class="track"></span><span class="thumb"></span></span>
+    </div>
+    <div class="toggle-row">
+      <label class="txt" for="showFileTooltip">File list on hover</label>
+      <span class="switch"><input type="checkbox" id="showFileTooltip" /><span class="track"></span><span class="thumb"></span></span>
+    </div>
+    <div class="toggle-row">
+      <label class="txt" for="formatNumbers">Format numbers (8,900)</label>
+      <span class="switch"><input type="checkbox" id="formatNumbers" /><span class="track"></span><span class="thumb"></span></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Existing GitHub elements</h2>
+    <div class="toggle-row">
+      <label class="txt" for="showAvatar">Author avatar</label>
+      <span class="switch"><input type="checkbox" id="showAvatar" /><span class="track"></span><span class="thumb"></span></span>
+    </div>
+    <div class="toggle-row">
+      <label class="txt" for="showCommitTime">Commit time</label>
+      <span class="switch"><input type="checkbox" id="showCommitTime" /><span class="track"></span><span class="thumb"></span></span>
+    </div>
+    <div class="toggle-row">
+      <label class="txt" for="showSha">Short SHA button</label>
+      <span class="switch"><input type="checkbox" id="showSha" /><span class="track"></span><span class="thumb"></span></span>
+    </div>
+    <div class="toggle-row">
+      <label class="txt" for="showCopyButton">Copy SHA button</label>
+      <span class="switch"><input type="checkbox" id="showCopyButton" /><span class="track"></span><span class="thumb"></span></span>
+    </div>
+    <div class="toggle-row">
+      <label class="txt" for="showBrowseButton">Browse files button</label>
+      <span class="switch"><input type="checkbox" id="showBrowseButton" /><span class="track"></span><span class="thumb"></span></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Commit line</h2>
+    <div class="toggle-row">
+      <label class="txt" for="useCustomCommitLine">Custom template</label>
+      <span class="switch"><input type="checkbox" id="useCustomCommitLine" /><span class="track"></span><span class="thumb"></span></span>
+    </div>
+    <textarea id="commitLineTemplate" rows="2" spellcheck="false"></textarea>
+    <div class="hint" style="margin-top:6px;">
+      Placeholders: {AVATAR} {AUTHOR} {TIMESTAMP} {DATE} {COMMIT_MESSAGE} {SHA} {REPO} {FILES_CHANGED} {ADDITIONS} {DELETIONS}
+    </div>
+    <details style="margin-top:6px;">
+      <summary>{TIMESTAMP} format codes</summary>
+      <table class="style-table">
+        <tr><td>{TIMESTAMP}</td><td>Relative (default): "3 hours ago"</td></tr>
+        <tr><td>{TIMESTAMP:t}</td><td>Short Time: 16:20</td></tr>
+        <tr><td>{TIMESTAMP:T}</td><td>Medium Time: 16:20:30</td></tr>
+        <tr><td>{TIMESTAMP:d}</td><td>Short Date: 04/20/2021</td></tr>
+        <tr><td>{TIMESTAMP:D}</td><td>Long Date: April 20, 2021</td></tr>
+        <tr><td>{TIMESTAMP:f}</td><td>Long Date, Short Time</td></tr>
+        <tr><td>{TIMESTAMP:F}</td><td>Full Date, Short Time</td></tr>
+        <tr><td>{TIMESTAMP:s}</td><td>Short Date, Short Time</td></tr>
+        <tr><td>{TIMESTAMP:S}</td><td>Short Date, Medium Time</td></tr>
+        <tr><td>{TIMESTAMP:R}</td><td>Relative, same as no style</td></tr>
+      </table>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2>Sign in</h2>
+    <div class="hint" style="margin-bottom:8px;">
+      Unauthenticated requests are limited to 60/hour, so stats may stop loading on large pages. Signing in raises this to 5000/hour.
+    </div>
+    <button id="signInBtn" class="primary">Sign in with GitHub</button>
+    <button id="signOutBtn" class="secondary" style="display:none;">Sign out</button>
+    <button id="cancelBtn" class="secondary" style="display:none;">Cancel</button>
+    <div id="authStatus"></div>
+    <details id="clientIdDetails" style="margin-top:8px;">
+      <summary>Using a different GitHub App</summary>
+      <div class="hint" style="margin-top:6px;">
+        Optional: override the Client ID this extension signs in with. Leave blank to use the built-in one.
+      </div>
+      <input type="text" id="clientId" placeholder="Ov23li... (optional)" autocomplete="off" spellcheck="false" />
+    </details>
+    <details style="margin-top:8px;">
+      <summary>Paste a token manually instead</summary>
+      <div class="hint" style="margin-top:6px;">
+        Create one at <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a> (no scopes needed for public repos).
+      </div>
+      <input type="text" id="token" placeholder="ghp_..." autocomplete="off" spellcheck="false" />
+    </details>
+  </div>
+
+  <div class="hint">
+    Everything here is stored only in this browser via chrome.storage.local. It's never sent anywhere except github.com / api.github.com.
+  </div>
+  <div class="status-toast" id="status"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

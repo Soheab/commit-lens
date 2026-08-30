@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "GitHub Commit Details",
+  "version": "1.0.0",
+  "description": "Shows extra per-commit info (files changed, +/- lines, etc.) on GitHub commit list pages. Customizable, local only.",
+  "permissions": ["storage", "alarms"],
+  "host_permissions": [
+    "https://github.com/*",
+    "https://api.github.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://github.com/*/*/commits*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "GitHub Commit Details settings"
+  }
+}
