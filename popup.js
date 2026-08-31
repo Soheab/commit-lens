@@ -18,7 +18,8 @@ const DEFAULT_SETTINGS = {
   commitLineTemplate: '{AVATAR} {AUTHOR} committed {TIMESTAMP}',
   formatNumbers: true,
   token: '',
-  clientId: ''
+  clientId: '',
+  workerUrl: ''
 };
 
 const checkboxIds = [
@@ -45,6 +46,7 @@ const signInBtn = document.getElementById('signInBtn');
 const signOutBtn = document.getElementById('signOutBtn');
 const cancelBtn = document.getElementById('cancelBtn');
 const clientIdInput = document.getElementById('clientId');
+const workerUrlInput = document.getElementById('workerUrl');
 const tokenInput = document.getElementById('token');
 const templateInput = document.getElementById('commitLineTemplate');
 
@@ -105,6 +107,7 @@ chrome.storage.local.get(DEFAULT_SETTINGS, (stored) => {
     document.getElementById(id).checked = settings[id];
   });
   tokenInput.value = settings.token || '';
+  workerUrlInput.value = settings.workerUrl || '';
   templateInput.value = settings.commitLineTemplate || DEFAULT_SETTINGS.commitLineTemplate;
 });
 refreshAuthUI();
@@ -153,6 +156,15 @@ clientIdInput.addEventListener('input', () => {
       flashStatus('Saved');
       refreshAuthUI();
     });
+  }, 400);
+});
+
+let workerUrlSaveTimer = null;
+workerUrlInput.addEventListener('input', () => {
+  clearTimeout(workerUrlSaveTimer);
+  workerUrlSaveTimer = setTimeout(() => {
+    const workerUrl = workerUrlInput.value.trim();
+    chrome.storage.local.set({ workerUrl }, () => flashStatus('Saved'));
   }, 400);
 });
 

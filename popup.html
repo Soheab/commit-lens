@@ -406,12 +406,25 @@
       </div>
       <input type="text" id="clientId" placeholder="Ov23li... (optional)" autocomplete="off" spellcheck="false" />
     </details>
+    <details id="workerUrlDetails" style="margin-top:8px;">
+      <summary>Worker URL (enables silent token refresh)</summary>
+      <div class="hint" style="margin-top:6px;">
+        Optional: a self-hosted <a href="https://github.com/Soheab/github-commit-details/tree/master/worker" target="_blank" rel="noopener">OAuth proxy Worker</a>.
+        Device-flow tokens expire after a few hours; without this, sign-in still works but drops back to unauthenticated requests when the token expires instead of refreshing silently.
+      </div>
+      <input type="text" id="workerUrl" placeholder="https://your-worker.workers.dev (optional)" autocomplete="off" spellcheck="false" />
+    </details>
     <details style="margin-top:8px;">
       <summary>Paste a token manually instead</summary>
       <div class="hint" style="margin-top:6px;">
-        Create one at <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a> (no scopes needed for public repos).
+        Create a <strong>classic</strong> token at
+        <a href="https://github.com/settings/tokens/new" target="_blank" rel="noopener">github.com/settings/tokens/new</a>.
+        No scopes needed for public repos, leave every checkbox unchecked. Set
+        <strong>Expiration</strong> to "No expiration" (or note the date and re-paste when it
+        lapses). A <a href="https://github.com/settings/tokens?type=beta" target="_blank" rel="noopener">fine-grained token</a>
+        works too, but those always expire (90 days max) and need read-only "Contents" repo access.
       </div>
-      <input type="text" id="token" placeholder="ghp_..." autocomplete="off" spellcheck="false" />
+      <input type="text" id="token" placeholder="ghp_... or github_pat_..." autocomplete="off" spellcheck="false" />
     </details>
   </div>
 
