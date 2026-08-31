@@ -6,7 +6,8 @@
   "permissions": ["storage", "alarms"],
   "host_permissions": [
     "https://github.com/*",
-    "https://api.github.com/*"
+    "https://api.github.com/*",
+    "https://*.workers.dev/*"
   ],
   "background": {
     "service_worker": "background.js"

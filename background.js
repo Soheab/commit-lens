@@ -1,18 +1,48 @@
-// GitHub OAuth Device Flow, run entirely client-side.
-// host_permissions for github.com exempts extension-page fetches (this
-// service worker) from CORS, which lets us call these endpoints directly
-// with no backend and no client secret.
+// GitHub OAuth Device Flow.
+//
+// Without a Worker URL configured, this runs entirely client-side: host_permissions
+// for github.com exempts extension-page fetches (this service worker) from CORS,
+// letting us call GitHub's endpoints directly with no backend and no client secret.
+// That path can't refresh an expiring token, since GitHub requires client_secret
+// for every token exchange (including refreshes) with a GitHub App.
+//
+// With a Worker URL configured (see worker/README.md), requests go through that
+// proxy instead, which injects the secret server-side. That unlocks silent token
+// refresh via a second alarm, scheduled shortly before the access token expires.
 const DEVICE_CODE_URL = 'https://github.com/login/device/code';
 const TOKEN_URL = 'https://github.com/login/oauth/access_token';
-const ALARM_NAME = 'ghcd-device-flow-poll';
+const POLL_ALARM = 'ghcd-device-flow-poll';
+const REFRESH_ALARM = 'ghcd-token-refresh';
+const REFRESH_LEAD_SECONDS = 300; // refresh 5 minutes before expiry
 
-async function startDeviceFlow(clientId) {
-  const res = await fetch(DEVICE_CODE_URL, {
+async function getWorkerUrl() {
+  const { workerUrl } = await chrome.storage.local.get('workerUrl');
+  return workerUrl ? workerUrl.replace(/\/+$/, '') : '';
+}
+
+async function postJson(url, body) {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ client_id: clientId, scope: '' })
+    body: JSON.stringify(body)
   });
   const data = await res.json();
+  return { res, data };
+}
+
+async function requestDeviceCode(clientId, workerUrl) {
+  if (workerUrl) return postJson(`${workerUrl}/device-code`, { scope: '' });
+  return postJson(DEVICE_CODE_URL, { client_id: clientId, scope: '' });
+}
+
+async function exchangeToken(body, clientId, workerUrl) {
+  if (workerUrl) return postJson(`${workerUrl}/token`, body);
+  return postJson(TOKEN_URL, { ...body, client_id: clientId });
+}
+
+async function startDeviceFlow(clientId) {
+  const workerUrl = await getWorkerUrl();
+  const { res, data } = await requestDeviceCode(clientId, workerUrl);
   if (!res.ok || data.error) {
     throw new Error(data.error_description || data.error || `Request failed (${res.status})`);
   }
@@ -40,7 +70,26 @@ async function startDeviceFlow(clientId) {
 // poll at roughly GitHub's own suggested cadence instead of once a minute.
 function schedulePoll(intervalSeconds) {
   const minutes = Math.max(intervalSeconds, 5) / 60;
-  chrome.alarms.create(ALARM_NAME, { delayInMinutes: minutes });
+  chrome.alarms.create(POLL_ALARM, { delayInMinutes: minutes });
+}
+
+function storeTokenResult(data) {
+  const stored = { token: data.access_token };
+  if (data.refresh_token) {
+    stored.refreshToken = data.refresh_token;
+    stored.refreshTokenExpiresAt = data.refresh_token_expires_in
+      ? Date.now() + data.refresh_token_expires_in * 1000
+      : null;
+  }
+  if (data.expires_in) {
+    stored.accessTokenExpiresAt = Date.now() + data.expires_in * 1000;
+  } else {
+    stored.accessTokenExpiresAt = null;
+  }
+  return chrome.storage.local.set(stored).then(() => {
+    if (stored.accessTokenExpiresAt) scheduleRefresh(stored.accessTokenExpiresAt);
+    else chrome.alarms.clear(REFRESH_ALARM);
+  });
 }
 
 async function pollDeviceFlow() {
@@ -55,22 +104,19 @@ async function pollDeviceFlow() {
   }
 
   try {
-    const res = await fetch(TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({
-        client_id: flow.clientId,
+    const workerUrl = await getWorkerUrl();
+    const { data } = await exchangeToken(
+      {
         device_code: flow.deviceCode,
         grant_type: 'urn:ietf:params:oauth:grant-type:device_code'
-      })
-    });
-    const data = await res.json();
+      },
+      flow.clientId,
+      workerUrl
+    );
 
     if (data.access_token) {
-      await chrome.storage.local.set({
-        token: data.access_token,
-        ghcd_deviceFlow: { status: 'success' }
-      });
+      await storeTokenResult(data);
+      await chrome.storage.local.set({ ghcd_deviceFlow: { status: 'success' } });
       return;
     }
 
@@ -98,8 +144,45 @@ async function pollDeviceFlow() {
   }
 }
 
+function scheduleRefresh(accessTokenExpiresAt) {
+  const fireAt = accessTokenExpiresAt - REFRESH_LEAD_SECONDS * 1000;
+  chrome.alarms.create(REFRESH_ALARM, { when: Math.max(fireAt, Date.now() + 1000) });
+}
+
+async function refreshAccessToken() {
+  const { refreshToken, clientId } = await chrome.storage.local.get(['refreshToken', 'clientId']);
+  const workerUrl = await getWorkerUrl();
+
+  // Refreshing requires client_secret, which only the Worker path has. Without
+  // a Worker configured there's nothing to do here; content.js's 401 handling
+  // covers the token simply expiring in that case.
+  if (!refreshToken || !workerUrl) return;
+
+  try {
+    const { data } = await exchangeToken(
+      { grant_type: 'refresh_token', refresh_token: refreshToken },
+      clientId,
+      workerUrl
+    );
+
+    if (data.access_token) {
+      await storeTokenResult(data);
+      return;
+    }
+
+    // Refresh token itself expired/revoked: drop everything and let the user
+    // sign in again next time they notice stats are unauthenticated.
+    await chrome.storage.local.remove(['token', 'refreshToken', 'refreshTokenExpiresAt', 'accessTokenExpiresAt']);
+  } catch (e) {
+    // Transient network error: try again on the normal poll-free cadence by
+    // retrying shortly rather than leaving the token to expire silently.
+    chrome.alarms.create(REFRESH_ALARM, { delayInMinutes: 1 });
+  }
+}
+
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === ALARM_NAME) pollDeviceFlow();
+  if (alarm.name === POLL_ALARM) pollDeviceFlow();
+  if (alarm.name === REFRESH_ALARM) refreshAccessToken();
 });
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -110,7 +193,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true; // keep the message channel open for the async response
   }
   if (msg?.type === 'GHCD_CANCEL_DEVICE_FLOW') {
-    chrome.alarms.clear(ALARM_NAME);
+    chrome.alarms.clear(POLL_ALARM);
     chrome.storage.local.remove('ghcd_deviceFlow').then(() => sendResponse({ ok: true }));
     return true;
   }
@@ -118,9 +201,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
 // If the service worker was killed mid-flow and just woke back up, resume
 // polling instead of leaving it stuck until the next alarm (which may have
-// been lost along with the worker).
-chrome.storage.local.get('ghcd_deviceFlow').then(({ ghcd_deviceFlow: flow }) => {
+// been lost along with the worker). Same for a pending token refresh.
+chrome.storage.local.get(['ghcd_deviceFlow', 'accessTokenExpiresAt', 'refreshToken']).then((stored) => {
+  const { ghcd_deviceFlow: flow, accessTokenExpiresAt, refreshToken } = stored;
   if (flow && flow.status === 'pending' && Date.now() < flow.expiresAt) {
     schedulePoll(flow.interval);
+  }
+  if (refreshToken && accessTokenExpiresAt) {
+    scheduleRefresh(accessTokenExpiresAt);
   }
 });

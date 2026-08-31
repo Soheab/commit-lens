@@ -1,0 +1,13 @@
+name = "github-commit-details-oauth"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+# GitHub App's Client ID (not secret). Override per-environment with `wrangler deploy --var CLIENT_ID:...`
+# or by editing this file after creating your own GitHub App.
+CLIENT_ID = "Iv23liG7GALSPsp8xMrv"
+# Restrict CORS to your extension's origin: chrome-extension://<your-extension-id>
+ALLOWED_ORIGIN = "chrome-extension://REPLACE_WITH_YOUR_EXTENSION_ID"
+
+# CLIENT_SECRET is not set here. Set it with:
+#   wrangler secret put CLIENT_SECRET
