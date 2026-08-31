@@ -7,7 +7,9 @@ file list on hover. Fully customizable, so you can toggle any of it off, or hide
 GitHub's own avatar, commit time, or SHA button, right from the popup.
 
 Everything is local to your browser. Settings are stored with `chrome.storage.local`
-and nothing is sent anywhere except `github.com` and `api.github.com`.
+and nothing is sent anywhere except `github.com` and `api.github.com`, plus, if you
+opt in, a self-hosted Worker that enables silent token refresh (see
+[Silent token refresh](#silent-token-refresh-optional)).
 
 ![Commit rows with extra stats](assets/commit-rows-screenshot.png)
 
@@ -72,10 +74,30 @@ GitHub** within a few seconds. No password or app install is needed on GitHub's
 side. This uses GitHub's OAuth **Device Flow**, which issues a token to the
 extension without ever exposing a client secret.
 
+Device-flow access tokens are short-lived (typically a few hours). By default, once
+one lapses the extension just falls back to unauthenticated requests (60/hour),
+and you'll need to sign in again to get back to 5,000/hour. To avoid that, deploy
+the small [OAuth proxy Worker](worker/) and paste its URL into **Worker URL** (see
+below), which lets the extension renew its token in the background on its own.
+
 If you'd rather use your own token, expand **Paste a token manually instead** at the
-bottom of the popup and paste a
-[personal access token](https://github.com/settings/tokens) (no scopes needed for
-public repos).
+bottom of the popup and paste a **classic**
+[personal access token](https://github.com/settings/tokens/new) (no scopes needed for
+public repos, leave every checkbox unchecked). Set its expiration to "No expiration"
+if you don't want to repeat this later; a
+[fine-grained token](https://github.com/settings/tokens?type=beta) works too, but
+those always expire (90 days max) and need read-only "Contents" repo access.
+
+### Silent token refresh (optional)
+
+Renewing a token before it lapses requires a `client_secret`, which can't safely
+live in the extension's source since anyone can read it. [`worker/`](worker/) is a
+small, stateless Cloudflare Worker that holds that secret and proxies GitHub's two
+OAuth endpoints. It's the only piece of infrastructure in this project that isn't
+"fully local," and it's entirely optional. See [`worker/README.md`](worker/README.md)
+for deploy steps. Once deployed, paste its `*.workers.dev` URL into **Worker URL**
+(popup or in-page panel, next to **Using a different GitHub App**) and the
+extension will keep itself signed in without any further action from you.
 
 ### Using your own GitHub App instead
 
@@ -154,8 +176,12 @@ to wherever it doesn't cover the commit list; it remembers where you left it.
 - Results are cached per session so re-scrolling or re-rendering doesn't refetch.
 - A `MutationObserver` (plus GitHub's `turbo:load`/`pjax:end` events) keeps it working
   as you navigate GitHub's single-page app.
-- Sign-in runs entirely client-side via OAuth Device Flow, polled from a background
-  service worker so it keeps working even if you close the popup while approving.
+- Sign-in runs via OAuth Device Flow, polled from a background service worker so
+  it keeps working even if you close the popup while approving. Without a Worker
+  URL configured this is entirely client-side, direct to `github.com`; with one
+  configured, the device-code and token requests go through that proxy instead
+  (see [Silent token refresh](#silent-token-refresh-optional)), and expiring
+  access tokens are refreshed automatically ahead of expiry via a second alarm.
 
 ## Privacy
 
