@@ -427,3 +427,56 @@
 .ghcd-style-table td:last-child {
   color: var(--ghcd-muted);
 }
+
+.ghcd-log-count {
+  font-weight: 400;
+}
+
+.ghcd-log-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.ghcd-log-actions .ghcd-btn {
+  margin-top: 0;
+}
+
+.ghcd-log-list {
+  margin-top: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--ghcd-card-border);
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.08);
+  font-family: ui-monospace, monospace;
+  font-size: 10.5px;
+}
+
+.ghcd-log-empty {
+  padding: 8px;
+  color: var(--ghcd-muted);
+}
+
+.ghcd-log-row {
+  display: flex;
+  gap: 6px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--ghcd-card-border);
+  line-height: 1.4;
+  word-break: break-word;
+}
+.ghcd-log-row:last-child {
+  border-bottom: none;
+}
+.ghcd-log-time {
+  flex: none;
+  color: var(--ghcd-muted);
+}
+.ghcd-log-detail {
+  display: block;
+  color: var(--ghcd-muted);
+}
+.ghcd-log-info .ghcd-log-msg { color: var(--ghcd-text); }
+.ghcd-log-request .ghcd-log-msg { color: var(--ghcd-muted); }
+.ghcd-log-warn .ghcd-log-msg { color: #b8860b; }
+.ghcd-log-error .ghcd-log-msg { color: #e5484d; }

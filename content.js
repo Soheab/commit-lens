@@ -18,12 +18,33 @@
     useCustomCommitLine: false,
     commitLineTemplate: '{AVATAR} {AUTHOR} committed {TIMESTAMP}',
     formatNumbers: true,
-    token: ''
+    token: '',
+    workerUrl: ''
   };
 
   let settings = { ...DEFAULT_SETTINGS };
   const statsCache = new Map(); // "owner/repo@sha" -> Promise<stats>
   const rowInfo = new WeakMap(); // li -> { info, badge, domValues, attributionRow, customLineEl }
+
+  // ---------------------------------------------------------------------
+  // Lightweight in-memory log, surfaced in the panel's Logs section so
+  // "stats unavailable" is debuggable without opening devtools.
+  // ---------------------------------------------------------------------
+  const LOG_LIMIT = 200;
+  const logs = [];
+  let logListeners = [];
+
+  function addLog(level, message, detail) {
+    logs.push({ time: Date.now(), level, message, detail: detail || null });
+    if (logs.length > LOG_LIMIT) logs.shift();
+    logListeners.forEach((fn) => fn());
+  }
+  const log = {
+    info: (msg, detail) => addLog('info', msg, detail),
+    warn: (msg, detail) => addLog('warn', msg, detail),
+    error: (msg, detail) => addLog('error', msg, detail),
+    request: (msg, detail) => addLog('request', msg, detail)
+  };
 
   function applyToggleClasses() {
     const cl = document.documentElement.classList;
@@ -71,16 +92,43 @@
     return { owner: m[1], repo: m[2], sha: m[3] };
   }
 
+  async function requestCommit(owner, repo, sha, useToken) {
+    const url = `https://api.github.com/repos/${owner}/${repo}/commits/${sha}`;
+    const headers = { Accept: 'application/vnd.github+json' };
+    if (useToken && settings.token) headers.Authorization = `Bearer ${settings.token}`;
+    log.request(`GET ${owner}/${repo}@${sha.slice(0, 7)} (${useToken && settings.token ? 'authed' : 'unauthed'})`, { url });
+    const res = await fetch(url, { headers });
+    log.request(`← ${res.status} ${owner}/${repo}@${sha.slice(0, 7)}`, {
+      status: res.status,
+      remaining: res.headers.get('x-ratelimit-remaining'),
+      limit: res.headers.get('x-ratelimit-limit'),
+      reset: res.headers.get('x-ratelimit-reset')
+    });
+    return res;
+  }
+
   function fetchStats(owner, repo, sha) {
     const key = `${owner}/${repo}@${sha}`;
     if (statsCache.has(key)) return statsCache.get(key);
     const p = (async () => {
-      const headers = { Accept: 'application/vnd.github+json' };
-      if (settings.token) headers.Authorization = `Bearer ${settings.token}`;
-      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}`, { headers });
+      let res = await requestCommit(owner, repo, sha, true);
+
+      if (res.status === 401 && settings.token) {
+        log.warn('Token rejected (401), clearing it and retrying unauthenticated', { owner, repo, sha });
+        settings.token = '';
+        chrome.storage.local.set({ token: '' });
+        res = await requestCommit(owner, repo, sha, false);
+      }
+
       if (!res.ok) {
-        if (res.status === 403) throw new Error('Rate limited (add a token in the extension popup)');
-        throw new Error(`GitHub API ${res.status}`);
+        if (res.status === 403 || res.status === 429) {
+          const msg = 'Rate limited (add a token in the extension popup)';
+          log.error(msg, { owner, repo, sha, status: res.status });
+          throw new Error(msg);
+        }
+        const msg = `GitHub API ${res.status}`;
+        log.error(msg, { owner, repo, sha });
+        throw new Error(msg);
       }
       const data = await res.json();
       return {
@@ -336,6 +384,7 @@
       badge.textContent = 'Stats unavailable';
       badge.classList.add('ghcd-badge--error');
       badge.title = e.message;
+      log.error(`Stats unavailable for ${info.owner}/${info.repo}@${info.sha.slice(0, 7)}: ${e.message}`);
     }
   }
 
@@ -574,8 +623,36 @@
             <input type="text" id="ghcd-p-clientid" placeholder="Ov23li... (optional)" autocomplete="off" spellcheck="false" />
           </details>
           <details class="ghcd-details">
+            <summary>Worker URL (enables silent token refresh)</summary>
+            <p class="ghcd-hint">Optional: a self-hosted OAuth proxy Worker (see worker/README.md). Without it, sign-in drops back to unauthenticated requests when the token expires instead of refreshing silently.</p>
+            <input type="text" id="ghcd-p-workerurl" placeholder="https://your-worker.workers.dev (optional)" autocomplete="off" spellcheck="false" />
+          </details>
+          <details class="ghcd-details">
             <summary>Paste a token manually instead</summary>
-            <input type="text" id="ghcd-p-token" placeholder="ghp_..." autocomplete="off" spellcheck="false" />
+            <p class="ghcd-hint">Create a <strong>classic</strong> token at
+              <a href="https://github.com/settings/tokens/new" target="_blank" rel="noopener">github.com/settings/tokens/new</a>.
+              No scopes needed for public repos, leave every checkbox unchecked. Set
+              <strong>Expiration</strong> to "No expiration" (or note the date and re-paste when
+              it lapses). A <a href="https://github.com/settings/tokens?type=beta" target="_blank" rel="noopener">fine-grained token</a>
+              works too, but those always expire (90 days max) and need read-only "Contents" repo access.</p>
+            <input type="text" id="ghcd-p-token" placeholder="ghp_... or github_pat_..." autocomplete="off" spellcheck="false" />
+          </details>
+        </div>
+        <div class="ghcd-panel-section">
+          <details class="ghcd-details" id="ghcd-p-logs-details">
+            <summary>Logs <span id="ghcd-p-log-count" class="ghcd-log-count"></span></summary>
+            <div class="ghcd-toggle-row">
+              <label for="ghcd-p-verbose">Verbose (include requests)</label>
+              <span class="ghcd-switch">
+                <input type="checkbox" id="ghcd-p-verbose" />
+                <span class="ghcd-track"></span><span class="ghcd-thumb"></span>
+              </span>
+            </div>
+            <div class="ghcd-log-actions">
+              <button type="button" class="ghcd-btn ghcd-btn-secondary" id="ghcd-p-log-copy">Copy</button>
+              <button type="button" class="ghcd-btn ghcd-btn-secondary" id="ghcd-p-log-clear">Clear</button>
+            </div>
+            <div id="ghcd-p-log-list" class="ghcd-log-list"></div>
           </details>
         </div>
       </div>`;
@@ -608,6 +685,16 @@
       clearTimeout(clientIdTimer);
       clientIdTimer = setTimeout(() => {
         chrome.storage.local.set({ clientId: clientIdInput.value.trim() });
+      }, 400);
+    });
+
+    const workerUrlInput = panel.querySelector('#ghcd-p-workerurl');
+    workerUrlInput.value = settings.workerUrl || '';
+    let workerUrlTimer = null;
+    workerUrlInput.addEventListener('input', () => {
+      clearTimeout(workerUrlTimer);
+      workerUrlTimer = setTimeout(() => {
+        chrome.storage.local.set({ workerUrl: workerUrlInput.value.trim() });
       }, 400);
     });
 
@@ -649,7 +736,56 @@
 
     initDrag(panel.querySelector('#ghcd-panel-drag'));
     refreshPanelAuth();
+    initLogsUI(panel);
     return panel;
+  }
+
+  function formatLogTime(ts) {
+    return new Date(ts).toLocaleTimeString(undefined, { hour12: false });
+  }
+
+  function initLogsUI(panel) {
+    const listEl = panel.querySelector('#ghcd-p-log-list');
+    const countEl = panel.querySelector('#ghcd-p-log-count');
+    const verboseInput = panel.querySelector('#ghcd-p-verbose');
+    const detailsEl = panel.querySelector('#ghcd-p-logs-details');
+
+    let verbose = false;
+
+    function render() {
+      const visible = verbose ? logs : logs.filter((l) => l.level !== 'request');
+      countEl.textContent = logs.length ? `(${logs.length})` : '';
+      if (!detailsEl.open) return; // skip DOM work while collapsed
+      listEl.innerHTML = visible
+        .slice()
+        .reverse()
+        .map((l) => {
+          const detail = l.detail ? ` ${escapeHtml(JSON.stringify(l.detail))}` : '';
+          return `<div class="ghcd-log-row ghcd-log-${l.level}"><span class="ghcd-log-time">${formatLogTime(l.time)}</span><span class="ghcd-log-msg">${escapeHtml(l.message)}${detail ? `<span class="ghcd-log-detail">${detail}</span>` : ''}</span></div>`;
+        })
+        .join('') || '<div class="ghcd-log-empty">No logs yet.</div>';
+    }
+
+    logListeners.push(render);
+    detailsEl.addEventListener('toggle', () => {
+      if (detailsEl.open) render();
+    });
+    verboseInput.addEventListener('change', () => {
+      verbose = verboseInput.checked;
+      render();
+    });
+    panel.querySelector('#ghcd-p-log-clear').addEventListener('click', () => {
+      logs.length = 0;
+      render();
+    });
+    panel.querySelector('#ghcd-p-log-copy').addEventListener('click', () => {
+      const text = logs
+        .map((l) => `[${formatLogTime(l.time)}] ${l.level.toUpperCase()} ${l.message}${l.detail ? ' ' + JSON.stringify(l.detail) : ''}`)
+        .join('\n');
+      navigator.clipboard.writeText(text).catch(() => {});
+    });
+
+    render();
   }
 
   function buildToggleButton() {
