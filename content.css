@@ -1,4 +1,7 @@
-.ghcd-hide-avatar li[data-testid="commit-row-item"] [data-testid="author-avatar"] {
+/* Single-author rows show one avatar inside [data-testid="author-avatar"];
+   co-authored rows show an AvatarStack instead. */
+.ghcd-hide-avatar li[data-testid="commit-row-item"] [data-component="AvatarStack"],
+.ghcd-hide-avatar li[data-testid="commit-row-item"] [data-testid="author-avatar"] img {
   display: none !important;
 }
 
@@ -21,8 +24,87 @@
   display: none !important;
 }
 
-.ghcd-hide-attribution li[data-testid="commit-row-item"] div:has(> [data-testid="author-avatar"]) {
+/* The attribution block (avatar(s), author name(s), relative-time) has no
+   stable data-testid of its own, but either [data-testid="author-avatar"]
+   (single author) or [data-testid="author-link"] (co-authored) is a direct
+   child of it, so :has(> ...) targets exactly that container. */
+.ghcd-hide-attribution li[data-testid="commit-row-item"] div:has(> [data-testid="author-avatar"]),
+.ghcd-hide-attribution li[data-testid="commit-row-item"] div:has(> [data-testid="author-link"]) {
   display: none !important;
+}
+
+/* Compact rows: GitHub's row is a CSS grid with the message, author/time
+   attribution, and metadata badge in separate grid areas, so it can't be
+   squeezed onto one line by resizing text alone. Instead, when compact mode
+   is on, the native message heading is hidden and content.js renders a
+   single .ghcd-compact-line (message — author — time) in its place, right
+   next to the existing stats badge. */
+.ghcd-compact li[data-testid="commit-row-item"] {
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+}
+.ghcd-compact li[data-testid="commit-row-item"] h4 {
+  display: none !important;
+}
+.ghcd-compact li[data-testid="commit-row-item"] .ghcd-badge {
+  gap: 5px;
+}
+.ghcd-compact .ghcd-diffbar {
+  width: 24px;
+}
+.ghcd-compact .ghcd-custom-line {
+  gap: 4px;
+}
+
+.ghcd-compact-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 14px;
+  color: #1b1f24;
+}
+
+.ghcd-compact-line .ghcd-badge {
+  flex: none;
+  margin-left: auto;
+  margin-right: 0;
+}
+
+.ghcd-compact-line button[data-testid="commit-row-show-description-button"] {
+  flex: none;
+}
+
+.ghcd-compact-message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.ghcd-compact-sep {
+  flex: none;
+  color: #656d76;
+}
+
+.ghcd-compact-author,
+.ghcd-compact-time {
+  flex: none;
+  color: #656d76;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@media (prefers-color-scheme: dark) {
+  .ghcd-compact-line {
+    color: #eef1f6;
+  }
+  .ghcd-compact-sep,
+  .ghcd-compact-author,
+  .ghcd-compact-time {
+    color: #9198a1;
+  }
 }
 
 .ghcd-custom-line {
@@ -44,6 +126,19 @@
 @media (prefers-color-scheme: dark) {
   .ghcd-custom-line {
     color: #848d97;
+  }
+}
+
+.ghcd-day-count {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #656d76;
+}
+
+@media (prefers-color-scheme: dark) {
+  .ghcd-day-count {
+    color: #9198a1;
   }
 }
 
@@ -426,6 +521,30 @@
 }
 .ghcd-style-table td:last-child {
   color: var(--ghcd-muted);
+}
+
+.ghcd-counts {
+  margin-top: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.ghcd-count-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 11.5px;
+  color: var(--ghcd-muted);
+}
+
+.ghcd-count-total {
+  font-weight: 700;
+  color: var(--ghcd-text);
+  border-bottom: 1px solid var(--ghcd-card-border);
+  padding-bottom: 5px;
+  margin-bottom: 3px;
 }
 
 .ghcd-log-count {

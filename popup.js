@@ -17,6 +17,8 @@ const DEFAULT_SETTINGS = {
   useCustomCommitLine: false,
   commitLineTemplate: '{AVATAR} {AUTHOR} committed {TIMESTAMP}',
   formatNumbers: true,
+  compactRows: false,
+  showCommitCount: true,
   token: '',
   clientId: '',
   workerUrl: ''
@@ -37,7 +39,9 @@ const checkboxIds = [
   'showSha',
   'showCopyButton',
   'showBrowseButton',
-  'useCustomCommitLine'
+  'useCustomCommitLine',
+  'compactRows',
+  'showCommitCount'
 ];
 
 const statusEl = document.getElementById('status');

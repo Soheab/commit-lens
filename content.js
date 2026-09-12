@@ -15,6 +15,8 @@
     showSha: true,
     showCopyButton: true,
     showBrowseButton: true,
+    compactRows: false,
+    showCommitCount: true,
     useCustomCommitLine: false,
     commitLineTemplate: '{AVATAR} {AUTHOR} committed {TIMESTAMP}',
     formatNumbers: true,
@@ -53,7 +55,8 @@
     cl.toggle('ghcd-hide-sha', !settings.showSha);
     cl.toggle('ghcd-hide-copy', !settings.showCopyButton);
     cl.toggle('ghcd-hide-browse', !settings.showBrowseButton);
-    cl.toggle('ghcd-hide-attribution', !!settings.useCustomCommitLine);
+    cl.toggle('ghcd-hide-attribution', !!settings.useCustomCommitLine || !!settings.compactRows);
+    cl.toggle('ghcd-compact', !!settings.compactRows);
   }
 
   function loadSettings(cb) {
@@ -77,6 +80,7 @@
       applyToggleClasses();
       refreshAllBadges();
       refreshAllCustomLines();
+      refreshAllCompactLines();
       refreshPanelToggles();
     }
     if ('token' in changes || 'clientId' in changes || 'ghcd_deviceFlow' in changes) {
@@ -231,16 +235,30 @@
   // before anything gets hidden, so {PLACEHOLDER}s work even once the
   // native attribution row is hidden by useCustomCommitLine.
   function readDomValues(li, info) {
-    const avatarImg = li.querySelector('[data-testid="author-avatar"] img');
-    const authorLink = li.querySelector('[data-testid="author-avatar"] a[aria-label^="commits by"]');
+    // GitHub renders two different shapes depending on author count: a
+    // single author uses [data-testid="author-avatar"] (one avatar + name
+    // link together); co-authored commits use an AvatarStack plus one
+    // [data-testid="author-link"] div per author instead.
+    const avatarImg = li.querySelector('[data-testid="commit-stack-avatar"], [data-testid="author-avatar"] img');
+    const authorLinks = Array.from(
+      li.querySelectorAll('[data-testid="author-avatar"] a[aria-label^="commits by"], [data-testid="author-link"] a[aria-label^="commits by"]')
+    );
+    const authors = authorLinks
+      .map((a) => a.getAttribute('aria-label').replace(/^commits by\s*/i, '').trim())
+      .filter(Boolean);
     const relTime = li.querySelector('relative-time');
     const messageLink = li.querySelector('h4 a[href*="/commit/"]');
+    // The link's title/text can be the full multi-line commit message; only
+    // the first line (the summary) belongs in a single-line display.
+    const fullMessage = messageLink ? messageLink.getAttribute('title') || messageLink.textContent.trim() : '';
     return {
       AVATAR: avatarImg ? avatarImg.src : '',
-      AUTHOR: authorLink ? authorLink.textContent.trim() : '',
+      AUTHOR: authors[0] || '',
+      AUTHOR_EXTRA_COUNT: Math.max(authors.length - 1, 0),
       TIMESTAMP_ISO: relTime ? relTime.getAttribute('datetime') || '' : '',
       DATE: relTime ? relTime.getAttribute('title') || '' : '',
-      COMMIT_MESSAGE: messageLink ? messageLink.getAttribute('title') || messageLink.textContent.trim() : '',
+      COMMIT_MESSAGE: fullMessage,
+      COMMIT_MESSAGE_SUMMARY: fullMessage.split('\n')[0].trim(),
       SHA: info.sha.slice(0, 7),
       REPO: `${info.owner}/${info.repo}`
     };
@@ -354,6 +372,87 @@
     renderTemplate(entry.customLineEl, settings.commitLineTemplate || DEFAULT_SETTINGS.commitLineTemplate, values);
   }
 
+  // Compact mode: GitHub's row is a CSS grid with the message, the author/
+  // time attribution, and our stats badge in separate grid areas, so it
+  // can't be squeezed onto one line by resizing text alone. Instead this
+  // builds one purpose-built line (message — author — time) and hides the
+  // native message/attribution elements, leaving the existing stats badge
+  // (already placed in the metadata area) to sit alongside it.
+  function applyCompactLine(li, entry) {
+    const messageLink = li.querySelector('h4 a[href*="/commit/"]');
+    if (!entry.compactLineEl) {
+      if (!messageLink) return;
+      const el = document.createElement('div');
+      el.className = 'ghcd-compact-line';
+      messageLink.closest('h4').insertAdjacentElement('afterend', el);
+      entry.compactLineEl = el;
+    }
+
+    if (!settings.compactRows) {
+      entry.compactLineEl.hidden = true;
+      // Hand the badge back to its original grid cell.
+      if (entry.badge && entry.badgeHome && entry.badge.parentElement !== entry.badgeHome) {
+        entry.badgeHome.appendChild(entry.badge);
+      }
+      // Hand the show-description button back to its original spot.
+      if (entry.descButton && entry.descButtonPlaceholder && entry.descButton.previousSibling !== entry.descButtonPlaceholder) {
+        entry.descButtonPlaceholder.after(entry.descButton);
+      }
+      return;
+    }
+    entry.compactLineEl.hidden = false;
+
+    const { COMMIT_MESSAGE, COMMIT_MESSAGE_SUMMARY, AUTHOR, AUTHOR_EXTRA_COUNT, TIMESTAMP_ISO } = entry.domValues;
+    // The "show description" (…) button is a sibling of the message h4 in
+    // GitHub's markup; move it (rather than clone it, so its click handler
+    // keeps working) to the front of the compact line instead of leaving it
+    // on its own row below the message.
+    entry.compactLineEl.innerHTML = '';
+    if (entry.descButton) {
+      entry.compactLineEl.appendChild(entry.descButton);
+    }
+    const msg = document.createElement('span');
+    msg.className = 'ghcd-compact-message';
+    msg.textContent = COMMIT_MESSAGE_SUMMARY;
+    msg.title = COMMIT_MESSAGE;
+    entry.compactLineEl.appendChild(msg);
+    if (AUTHOR) {
+      const sep = document.createElement('span');
+      sep.className = 'ghcd-compact-sep';
+      sep.textContent = '—';
+      entry.compactLineEl.appendChild(sep);
+      const author = document.createElement('span');
+      author.className = 'ghcd-compact-author';
+      author.textContent = AUTHOR_EXTRA_COUNT > 0 ? `${AUTHOR} +${AUTHOR_EXTRA_COUNT}` : AUTHOR;
+      entry.compactLineEl.appendChild(author);
+    }
+    const date = settings.showCommitTime && TIMESTAMP_ISO ? new Date(TIMESTAMP_ISO) : null;
+    if (date && !isNaN(date.getTime())) {
+      const sep = document.createElement('span');
+      sep.className = 'ghcd-compact-sep';
+      sep.textContent = '—';
+      entry.compactLineEl.appendChild(sep);
+      const time = document.createElement('span');
+      time.className = 'ghcd-compact-time';
+      time.textContent = formatRelativeTime(date);
+      time.title = entry.domValues.DATE;
+      entry.compactLineEl.appendChild(time);
+    }
+    // Pull the stats badge into this same flex line so message, author,
+    // time, and stats are all genuinely on one row rather than relying on
+    // GitHub's own (unknown, hashed) grid-area placement for the badge.
+    if (entry.badge) {
+      entry.compactLineEl.appendChild(entry.badge);
+    }
+  }
+
+  function refreshAllCompactLines() {
+    document.querySelectorAll('li[data-testid="commit-row-item"][data-ghcd-processed]').forEach((li) => {
+      const entry = rowInfo.get(li);
+      if (entry) applyCompactLine(li, entry);
+    });
+  }
+
   function refreshAllCustomLines() {
     document.querySelectorAll('li[data-testid="commit-row-item"][data-ghcd-processed]').forEach((li) => {
       const entry = rowInfo.get(li);
@@ -369,6 +468,7 @@
   }
 
   async function processRow(li) {
+    li.removeAttribute('data-ghcd-queued');
     if (li.hasAttribute('data-ghcd-processed')) return;
     li.setAttribute('data-ghcd-processed', 'true');
     const info = parseRow(li);
@@ -377,11 +477,35 @@
     const badge = makeBadge();
     container.appendChild(badge);
 
-    const attributionRow = li.querySelector('[data-testid="author-avatar"]')?.parentElement || null;
+    // Marks the show-description button's original spot so it can be moved
+    // back there when compact mode is turned off.
+    const descButton = li.querySelector('button[data-testid="commit-row-show-description-button"]');
+    let descButtonPlaceholder = null;
+    if (descButton) {
+      descButtonPlaceholder = document.createComment('ghcd-desc-button-home');
+      descButton.before(descButtonPlaceholder);
+    }
+
+    // The attribution block (avatar(s) + author name(s) + "committed" +
+    // relative-time) has no stable data-testid of its own, but either
+    // [data-testid="author-avatar"] (single author) or the first
+    // [data-testid="author-link"] (co-authored) is a direct child of it.
+    const attributionRow = li.querySelector('[data-testid="author-avatar"], [data-testid="author-link"]')?.parentElement || null;
     const domValues = readDomValues(li, info);
-    const entry = { info, badge, domValues, attributionRow, customLineEl: null };
+    const entry = {
+      info,
+      badge,
+      badgeHome: container,
+      domValues,
+      attributionRow,
+      customLineEl: null,
+      compactLineEl: null,
+      descButton,
+      descButtonPlaceholder
+    };
     rowInfo.set(li, entry);
     applyCustomLine(li, entry, null);
+    applyCompactLine(li, entry);
 
     try {
       const stats = await fetchStats(info.owner, info.repo, info.sha);
@@ -407,10 +531,121 @@
     });
   }
 
+  function computeDayCounts() {
+    const rows = document.querySelectorAll('li[data-testid="commit-row-item"]');
+    const byDay = new Map(); // 'YYYY-MM-DD' -> count
+    rows.forEach((li) => {
+      const iso = li.querySelector('relative-time')?.getAttribute('datetime');
+      if (!iso) return;
+      const day = iso.slice(0, 10);
+      byDay.set(day, (byDay.get(day) || 0) + 1);
+    });
+    const days = Array.from(byDay.keys()).sort().reverse();
+    return { total: rows.length, byDay, days };
+  }
+
+  function dayLabel(day) {
+    return new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'UTC'
+    });
+  }
+
+  // GitHub groups each day's commits under a heading like "Commits on Sep 12,
+  // 2026". Matched by text content rather than a class name, since those are
+  // hashed and change across deploys.
+  function findDateHeadings() {
+    return Array.from(document.querySelectorAll('h3, h2')).filter((h) =>
+      /^Commits on /i.test(h.textContent.trim())
+    );
+  }
+
+  let lastCountsSignature = null;
+
+  function updateCommitCounts() {
+    const countsEl = panelEl && panelEl.querySelector('#ghcd-p-counts');
+
+    if (!settings.showCommitCount) {
+      if (lastCountsSignature !== null) {
+        document.querySelectorAll('.ghcd-day-count').forEach((el) => el.remove());
+        lastCountsSignature = null;
+      }
+      if (countsEl) countsEl.innerHTML = '';
+      return;
+    }
+
+    const { total, byDay, days } = computeDayCounts();
+
+    // Skip touching the DOM entirely when nothing changed: adding/removing
+    // the .ghcd-day-count chips is itself a mutation, and this runs from a
+    // MutationObserver callback, so a no-op guard is required to avoid an
+    // infinite scan -> mutate -> scan loop.
+    const signature = `${total}|${days.map((d) => `${d}:${byDay.get(d)}`).join(',')}`;
+    if (signature === lastCountsSignature) return;
+    lastCountsSignature = signature;
+
+    document.querySelectorAll('.ghcd-day-count').forEach((el) => el.remove());
+
+    const headings = findDateHeadings();
+    headings.forEach((heading) => {
+      // Count rows between this heading and the next one (or end of list).
+      let node = heading.nextElementSibling;
+      let count = 0;
+      while (node && !headings.includes(node)) {
+        count += node.querySelectorAll('li[data-testid="commit-row-item"]').length;
+        node = node.nextElementSibling;
+      }
+      if (count > 0) {
+        const chip = document.createElement('span');
+        chip.className = 'ghcd-day-count';
+        chip.textContent = `${formatNumber(count)} commit${count === 1 ? '' : 's'}`;
+        heading.appendChild(chip);
+      }
+    });
+
+    if (countsEl) {
+      const dayRows = days
+        .map((day) => `<div class="ghcd-count-row"><span>${dayLabel(day)}</span><span>${formatNumber(byDay.get(day))}</span></div>`)
+        .join('');
+      countsEl.innerHTML = `
+        <div class="ghcd-count-row ghcd-count-total"><span>Total shown</span><span>${formatNumber(total)}</span></div>
+        ${dayRows}`;
+    }
+  }
+
+  // Process new rows in small batches rather than firing every row's fetch
+  // at once: a full commits page can have 50+ unprocessed rows on first
+  // load, and that many concurrent requests at once is unnecessary load.
+  const SCAN_BATCH_SIZE = 8;
+  const SCAN_BATCH_DELAY_MS = 150;
+  let scanQueue = [];
+  let scanTimer = null;
+
+  function runScanBatch() {
+    scanTimer = null;
+    const batch = scanQueue.splice(0, SCAN_BATCH_SIZE);
+    batch.forEach(processRow);
+    updateCommitCounts();
+    if (scanQueue.length > 0) {
+      scanTimer = setTimeout(runScanBatch, SCAN_BATCH_DELAY_MS);
+    }
+  }
+
   function scan() {
-    document
-      .querySelectorAll('li[data-testid="commit-row-item"]:not([data-ghcd-processed])')
-      .forEach(processRow);
+    const rows = document.querySelectorAll(
+      'li[data-testid="commit-row-item"]:not([data-ghcd-processed]):not([data-ghcd-queued])'
+    );
+    if (rows.length === 0) {
+      updateCommitCounts();
+      return;
+    }
+    rows.forEach((li) => {
+      li.setAttribute('data-ghcd-queued', 'true');
+      scanQueue.push(li);
+    });
+    if (!scanTimer) runScanBatch();
   }
 
   // ---------------------------------------------------------------------
@@ -475,10 +710,11 @@
 
   function refreshPanelToggles() {
     if (!panelEl) return;
-    [...STATS_TOGGLES, ...ELEMENT_TOGGLES].forEach(([id]) => {
+    [...STATS_TOGGLES, ...ELEMENT_TOGGLES, ['compactRows'], ['showCommitCount']].forEach(([id]) => {
       const input = panelEl.querySelector(`#ghcd-p-${id}`);
       if (input) input.checked = !!settings[id];
     });
+    updateCommitCounts();
     const useCustomInput = panelEl.querySelector('#ghcd-p-useCustomCommitLine');
     if (useCustomInput) useCustomInput.checked = !!settings.useCustomCommitLine;
     const templateInput = panelEl.querySelector('#ghcd-p-template');
@@ -612,6 +848,15 @@
         <div class="ghcd-panel-section">
           <h3>Existing GitHub elements</h3>
           ${ELEMENT_TOGGLES.map(toggleRowHtml).join('')}
+        </div>
+        <div class="ghcd-panel-section">
+          <h3>Layout</h3>
+          ${toggleRowHtml(['compactRows', 'Compact rows'])}
+        </div>
+        <div class="ghcd-panel-section">
+          <h3>Commit counts</h3>
+          ${toggleRowHtml(['showCommitCount', 'Show counts'])}
+          <div id="ghcd-p-counts" class="ghcd-counts"></div>
         </div>
         <div class="ghcd-panel-section">
           <h3>Commit line</h3>
@@ -816,6 +1061,7 @@
     btn.title = 'Commit Details settings';
     btn.addEventListener('click', () => {
       if (!panelEl) buildPanel();
+      updateCommitCounts();
       if (panelEl.hidden) {
         chrome.storage.local.get('ghcd_panelPos', (stored) => {
           panelEl.hidden = false;
