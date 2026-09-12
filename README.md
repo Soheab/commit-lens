@@ -29,6 +29,10 @@ opt in, a self-hosted Worker that enables silent token refresh (see
   stats)
 - **Flexible timestamp formatting** in the custom template: relative by default, or
   any of nine format codes (short time, long date, full date+time, etc.)
+- **Compact rows**, collapsing each commit down to a single line (message, author,
+  relative time, and stats) instead of GitHub's default two-line layout
+- **Commit counts**, appended to GitHub's own "Commits on \<date\>" headings so you can
+  see at a glance how many commits landed each day
 - **Sign in with GitHub** via OAuth Device Flow. One click, no password, no manual
   token needed, and it raises the API rate limit from 60/hour to 5,000/hour
 - **Manual token support** as a fallback, if you'd rather paste your own
@@ -160,6 +164,19 @@ stuck with relative time everywhere:
 
 e.g. `{AUTHOR} · {TIMESTAMP:D}` renders as "Soheab · April 20, 2021".
 
+### Compact rows
+
+Turn on **Compact rows** and each commit collapses to one line: the commit message
+(truncated with an ellipsis), author (or "Author +N" for co-authored commits),
+relative time, and the stats badge, all inline. GitHub's own two-line layout
+(message, then a separate avatar/author/time line) is hidden while this is on.
+
+### Commit counts
+
+Turn on **Show counts** and each of GitHub's own "Commits on \<date\>" headings gets
+a small commit count appended (e.g. "Commits on Sep 12, 2026  8 commits"). A running
+total and a per-day breakdown are also available in the in-page panel.
+
 Settings live in the toolbar popup, and also in a small draggable panel you can open
 directly on the commits page (a floating "GC" button in the corner). That's handy
 since the toolbar popup closes as soon as you click elsewhere. Drag it by its header
@@ -176,6 +193,9 @@ to wherever it doesn't cover the commit list; it remembers where you left it.
 - A content script (`content.js`) scans each commit row, reads the owner/repo/SHA
   straight from GitHub's own row markup, and calls
   `GET /repos/{owner}/{repo}/commits/{sha}` on the GitHub REST API.
+- Rows are processed in small batches (a handful at a time, with a short delay
+  between batches) rather than firing every row's request at once, so a large
+  commits page doesn't burst dozens of concurrent requests on load.
 - Results are cached per session so re-scrolling or re-rendering doesn't refetch.
 - A `MutationObserver` (plus GitHub's `turbo:load`/`pjax:end` events) keeps it working
   as you navigate GitHub's single-page app.
