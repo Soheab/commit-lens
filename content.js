@@ -126,9 +126,16 @@
           log.error(msg, { owner, repo, sha, status: res.status });
           throw new Error(msg);
         }
+        if (res.status === 404 && settings.token) {
+          showPanelAuthWarning('Your token may be expired or missing access to this repo (GitHub returns 404 for private repos when auth fails). Try signing in again.');
+        }
         const msg = `GitHub API ${res.status}`;
         log.error(msg, { owner, repo, sha });
         throw new Error(msg);
+      }
+      if (res.status === 200 && settings.token && panelAuthWarning) {
+        panelAuthWarning = null;
+        refreshPanelAuth();
       }
       const data = await res.json();
       return {
@@ -529,6 +536,13 @@
     handle.addEventListener('pointercancel', endDrag);
   }
 
+  let panelAuthWarning = null;
+
+  function showPanelAuthWarning(message) {
+    panelAuthWarning = message;
+    refreshPanelAuth();
+  }
+
   function renderPanelAuth({ token, clientId, flow }) {
     if (!panelAuthStatusEl) return;
     const signInBtn = panelEl.querySelector('#ghcd-p-signin');
@@ -559,12 +573,18 @@
       signInBtn.style.display = 'none';
       signOutBtn.style.display = 'block';
       cancelBtn.style.display = 'none';
-      panelAuthStatusEl.classList.add('success');
-      panelAuthStatusEl.textContent = 'Signed in with GitHub';
+      if (panelAuthWarning) {
+        panelAuthStatusEl.classList.add('error');
+        panelAuthStatusEl.textContent = panelAuthWarning;
+      } else {
+        panelAuthStatusEl.classList.add('success');
+        panelAuthStatusEl.textContent = 'Signed in with GitHub';
+      }
     } else {
       signInBtn.style.display = 'block';
       signOutBtn.style.display = 'none';
       cancelBtn.style.display = 'none';
+      panelAuthWarning = null;
     }
   }
 

@@ -69,10 +69,13 @@ enough for a quick look, but a commit list page can burn through it fast. Signin
 raises the limit to 5,000/hour.
 
 Click the extension icon, then **Sign in with GitHub**. A GitHub tab opens with a
-short code pre-filled; approve it, and the popup will show **✓ Signed in with
-GitHub** within a few seconds. No password or app install is needed on GitHub's
-side. This uses GitHub's OAuth **Device Flow**, which issues a token to the
-extension without ever exposing a client secret.
+short code pre-filled; approve it. If this is your first time signing in, GitHub
+will also ask you to install the app and choose which repositories it can access
+(pick "All repositories," or select specific ones — private repos need to be
+explicitly granted). Once that's done, the popup will show **✓ Signed in with
+GitHub** within a few seconds. No password is needed on GitHub's side. This uses
+GitHub's OAuth **Device Flow**, which issues a token to the extension without ever
+exposing a client secret.
 
 Device-flow access tokens are short-lived (typically a few hours). By default, once
 one lapses the extension just falls back to unauthenticated requests (60/hour),
